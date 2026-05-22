@@ -1,0 +1,12 @@
+{{define "content"}}
+<h2>Latest Articles</h2>
+{{range .Posts}}
+<article>
+  <h3><a href="/post/{{.ID}}">{{.Title}}</a></h3>
+  <p>{{slice .Content 0 200}}</p>
+  <small>Published: {{.CreatedAt.Format "Jan 2, 2006"}}</small>
+</article>
+<hr />
+{{else}}
+<p>No articles yet.</p>
+{{end}} {{end}}

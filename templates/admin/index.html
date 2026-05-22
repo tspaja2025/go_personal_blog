@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>Admin Dashboard</h1>
+<nav>
+  <a href="/admin/posts/new">Create New Post</a>
+  <a href="/admin/logout">Logout</a>
+</nav>
+
+<h2>All Posts</h2>
+{{range .Posts}}
+<div>
+  <h3>{{.Title}}</h3>
+  <div>
+    Status: {{if .Published}}Published{{else}}Draft{{end}} | Created:
+    {{.CreatedAt.Format "Jan 2, 2006"}}
+  </div>
+  <div>
+    <a href="/admin/posts/{{.ID}}/edit">Edit</a>
+    <a href="/admin/posts/{{.ID}}/delete">Delete</a>
+  </div>
+</div>
+{{else}}
+<p>No posts found. Create your first post to get started.</p>
+{{end}} {{end}}
