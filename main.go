@@ -43,11 +43,19 @@ func startServer() {
 
 	// Routes - Guest
 	http.HandleFunc("/", handler.Index)
+	http.HandleFunc("/post", handler.ShowPost)
 
 	// Routes - Admin
+	http.HandleFunc("/admin", requireAuth(handler.AdminIndex))
 	http.HandleFunc("/admin/login", handler.Login)
 	http.HandleFunc("/admin/logout", handler.Logout)
-	http.HandleFunc("/admin", requireAuth(handler.AdminIndex))
+
+	// Admin CRUD routes
+	http.HandleFunc("/admin/posts/add", requireAuth(handler.NewPostForm))
+	http.HandleFunc("/admin/posts/create", requireAuth(handler.CreatePostForm))
+	http.HandleFunc("/admin/posts/edit", requireAuth(handler.EditPostForm))
+	http.HandleFunc("/admin/posts/update", requireAuth(handler.UpdatePostForm))
+	http.HandleFunc("/admin/posts/delete", requireAuth(handler.DeletePostForm))
 
 	fmt.Println("Server starting on http://localhost:3000")
 	http.ListenAndServe(":3000", nil)
@@ -73,6 +81,47 @@ func (s *PostStore) LoadPosts() ([]Post, error) {
 	var posts []Post
 	err = json.Unmarshal(data, &posts)
 	return posts, err
+}
+
+func (h *Handler) ShowPost(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Post ID required", http.StatusBadRequest)
+		return
+	}
+
+	posts, err := h.postStore.LoadPosts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var foundPost *Post
+
+	for _, post := range posts {
+		if post.ID == id && post.Published {
+			foundPost = &post
+			break
+		}
+	}
+
+	if foundPost == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
+		return
+	}
+
+	data := struct {
+		Title string
+		Post  Post
+	}{
+		Title: foundPost.Title,
+		Post:  *foundPost,
+	}
+
+	err = h.templates["guest/post"].ExecuteTemplate(w, "base.html", data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (s *PostStore) SavePosts(posts []Post) error {
@@ -137,6 +186,11 @@ func loadTemplates() map[string]*template.Template {
 		"templates/guest/index.html",
 	))
 
+	tmpl["guest/post"] = template.Must(template.ParseFiles(
+		"templates/layout/base.html",
+		"templates/guest/post.html",
+	))
+
 	// Admin
 	tmpl["admin/index"] = template.Must(template.ParseFiles(
 		"templates/layout/base.html",
@@ -151,6 +205,11 @@ func loadTemplates() map[string]*template.Template {
 	tmpl["admin/logout"] = template.Must(template.ParseFiles(
 		"templates/layout/base.html",
 		"templates/admin/logout.html",
+	))
+
+	tmpl["admin/post"] = template.Must(template.ParseFiles(
+		"templates/layout/base.html",
+		"templates/admin/posts/add.html",
 	))
 
 	return tmpl
@@ -208,6 +267,246 @@ func (h *Handler) AdminIndex(w http.ResponseWriter, r *http.Request) {
 	h.templates["admin/index"].ExecuteTemplate(w, "base.html", data)
 }
 
+func (h *Handler) NewPostForm(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		Title  string
+		Post   Post
+		Errors map[string]string
+	}{
+		Title:  "Create New Post",
+		Post:   Post{},
+		Errors: nil,
+	}
+
+	err := h.templates["admin/post"].ExecuteTemplate(w, "base.html", data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) CreatePostForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate form
+	title := r.FormValue("title")
+	content := r.FormValue("content")
+	published := r.FormValue("published") == "on"
+
+	// Validation
+	errors := make(map[string]string)
+	if len(title) < 3 {
+		errors["title"] = "Title must be at least 3 characters"
+	}
+	if len(title) > 200 {
+		errors["title"] = "Title must be less than 200 characters"
+	}
+	if len(content) < 10 {
+		errors["content"] = "Content must be at least 10 characters"
+	}
+	if len(content) > 50000 {
+		errors["content"] = "Content must be less than 50000 characters"
+	}
+
+	if len(errors) > 0 {
+		// Return to form with errors
+		data := struct {
+			Title  string
+			Post   Post
+			Errors map[string]string
+		}{
+			Title: "Create New Post",
+			Post: Post{
+				Title:     title,
+				Content:   content,
+				Published: published,
+			},
+			Errors: errors,
+		}
+
+		err := h.templates["admin/post"].ExecuteTemplate(w, "base.html", data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Create post
+	post := Post{
+		ID:        generateID(),
+		Title:     title,
+		Content:   content,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Published: published,
+	}
+
+	if err := h.postStore.CreatePost(post); err != nil {
+		http.Error(w, "Failed to create post: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func (h *Handler) EditPostForm(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Post ID required", http.StatusBadRequest)
+		return
+	}
+
+	posts, err := h.postStore.LoadPosts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var foundPost *Post
+	for _, post := range posts {
+		if post.ID == id {
+			foundPost = &post
+			break
+		}
+	}
+
+	if foundPost == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
+		return
+	}
+
+	data := struct {
+		Title  string
+		Post   Post
+		Errors map[string]string
+	}{
+		Title:  "Edit Post",
+		Post:   *foundPost,
+		Errors: nil,
+	}
+
+	err = h.templates["admin/post"].ExecuteTemplate(w, "base.html", data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) UpdatePostForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.FormValue("id")
+	if id == "" {
+		http.Error(w, "Post ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate form
+	title := r.FormValue("title")
+	content := r.FormValue("content")
+	published := r.FormValue("published") == "on"
+
+	// Validation
+	errors := make(map[string]string)
+	if len(title) < 3 {
+		errors["title"] = "Title must be at least 3 characters"
+	}
+	if len(title) > 200 {
+		errors["title"] = "Title must be less than 200 characters"
+	}
+	if len(content) < 10 {
+		errors["content"] = "Content must be at least 10 characters"
+	}
+	if len(content) > 50000 {
+		errors["content"] = "Content must be less than 50000 characters"
+	}
+
+	if len(errors) > 0 {
+		// Return to form with errors
+		data := struct {
+			Title  string
+			Post   Post
+			Errors map[string]string
+		}{
+			Title: "Edit Post",
+			Post: Post{
+				Title:     title,
+				Content:   content,
+				Published: published,
+			},
+			Errors: errors,
+		}
+
+		err := h.templates["admin/post"].ExecuteTemplate(w, "base.html", data)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Load existing post to preserve creation data
+	posts, err := h.postStore.LoadPosts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var existingPost *Post
+	for _, post := range posts {
+		if post.ID == id {
+			existingPost = &post
+			break
+		}
+	}
+
+	if existingPost == nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
+		return
+	}
+
+	// Update post
+	updatedPost := Post{
+		ID:        id,
+		Title:     title,
+		Content:   content,
+		CreatedAt: existingPost.CreatedAt,
+		UpdatedAt: time.Now(),
+		Published: published,
+	}
+
+	if err := h.postStore.UpdatePost(updatedPost); err != nil {
+		http.Error(w, "Failed to update post: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func (h *Handler) DeletePostForm(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Post ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Add CSRF protection for DELETE
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := h.postStore.DeletePost(id); err != nil {
+		http.Error(w, "Failed to delete post: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		h.templates["admin/login"].ExecuteTemplate(w, "base.html", nil)
@@ -254,6 +553,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func generateID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
 func isAuthenticated(r *http.Request) bool {
