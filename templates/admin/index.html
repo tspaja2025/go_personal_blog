@@ -1,33 +1,24 @@
 {{define "content"}}
 <div>
-  <div>
-    <h1>Manage Posts</h1>
-    <a href="/admin/posts/add">Create New Post</a>
-  </div>
-
-  <div>
-    {{range .Posts}}
-    <div>
-      <h3>{{.Title}}</h3>
-      <div>
-        Created: {{.CreatedAt.Format "2006-01-02 15:04:05"}} {{if ne .CreatedAt
-        .UpdatedAt}} | Updated: {{.UpdatedAt.Format "2006-01-02 15:04:05"}}
-        {{end}} | Status: {{if .Published}}Published{{else}}Draft{{end}}
-      </div>
-      <div>
-        <a href="/admin/posts/edit?id={{.ID}}">Edit</a>
-        <a
-          href="/admin/posts/delete?id={{.ID}}"
-          onclick="
-            return confirm('Are you sure you want to delete this post?');
-          "
-          >Delete</a
-        >
-      </div>
-    </div>
-    {{else}}
-    <p>No posts yet. <a href="/admin/posts/add">Create your first post!</a></p>
-    {{end}}
-  </div>
+	{{range .Posts}}
+	<div>
+		<h3>{{.Title}}</h3>
+		<div>
+			Created: {{.CreatedAt.Format "2006-01-02 15:04:05"}} {{if ne .CreatedAt
+			.UpdatedAt}} | Updated: {{.UpdatedAt.Format `2006-01-02 15:04:05`}}
+			{{end}} | Status: {{if .Published}}Published{{else}}Draft{{end}}
+		</div>
+		<div>
+			<a href="/admin/posts/edit?id={{.ID}}">Edit</a>
+			<a
+				href="/admin/posts/delete?id={{.ID}}"
+				onclick="return confirm('Are you sure you want to delete this post?');"
+				>Delete</a
+			>
+		</div>
+	</div>
+	{{else}}
+	<p>No posts yet. <a href="/admin/posts/add">Create your first post!</a></p>
+	{{end}}
 </div>
 {{end}}

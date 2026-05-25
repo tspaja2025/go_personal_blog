@@ -1,9 +1,9 @@
 {{define "content"}}
 <article>
-  <h1>{{.Post.Title}}</h1>
+	<h1>{{.Post.Title}}</h1>
 
-  <p>Published: {{.Post.CreatedAt.Format "Jan 2, 2006"}}</p>
+	<p>Published: {{.Post.CreatedAt.Format "Jan 2, 2006"}}</p>
 
-  <div>{{.Post.Content}}</div>
+	<div>{{.Post.Content}}</div>
 </article>
 {{end}}
