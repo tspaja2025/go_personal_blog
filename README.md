@@ -3,10 +3,8 @@
 A simple personal blog project built with Go.
 
 ## Roadmap.sh beginner project
-This project was created as a part of Expense Tracker beginner project.
+This project was created as a part of personal blog beginner project.
 Check out the project details [roadmap.sh](https://roadmap.sh/projects/personal-blog)
-
-## Features
 
 ---
 
@@ -32,7 +30,12 @@ go run main.go
 
 * Go
 * Standard library packages:
-  * ``
+  * `encoding/json`
+  * `fmt`
+  * `html/template`
+  * `net/http`
+  * `os`
+  * `time`
 
 ## Learning Goals
 
